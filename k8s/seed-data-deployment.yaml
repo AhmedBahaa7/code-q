@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seed-data-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seed-data
+  template:
+    metadata:
+      labels:
+        app: seed-data
+    spec:
+      containers:
+        - name: seed-data
+          image: ahmedbahaa2/seed-data:latest
+          command: ["./generate-votes.sh"]

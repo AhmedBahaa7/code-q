@@ -1,0 +1,82 @@
+stages:
+  - checkout
+  - build_and_push
+  - trivy_image_scan
+  - deploy
+
+# Use your DockerHub or GitLab registry credentials
+variables:
+  REGISTRY_USERNAME: "$REGISTRY_USERNAME"
+  REGISTRY_PASSWORD: "$REGISTRY_PASSWORD"
+  REGISTRY_URL: "docker.io"  # Change if you are using GitLab registry instead
+  DOCKER_DRIVER: overlay2
+
+checkout:
+  stage: checkout
+    script:
+    - git clone http://35.180.99.50/root/code-q
+  artifacts:
+    paths:
+      - code-q/
+
+build_and_push:
+  stage: build_and_push
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USERNAME" --password-stdin ${REGISTRY_URL}
+    - cd code-q
+  script:
+    - docker build -t $REGISTRY_USERNAME/vote:latest ./vote
+    - docker push $REGISTRY_USERNAME/vote:latest
+
+    - docker build -t $REGISTRY_USERNAME/result:latest ./result
+    - docker push $REGISTRY_USERNAME/result:latest
+
+    - docker build -t $REGISTRY_USERNAME/worker:latest ./worker
+    - docker push $REGISTRY_USERNAME/worker:latest
+
+    - docker build -t $REGISTRY_USERNAME/seed-data:latest ./seed-data
+    - docker push $REGISTRY_USERNAME/seed-data:latest
+
+trivy_image_scan:
+  stage: trivy_image_scan
+  image: aquasec/trivy:latest
+  script:
+    - trivy image $REGISTRY_USERNAME/vote:latest > trivy_vote.txt
+    - trivy image $REGISTRY_USERNAME/result:latest > trivy_result.txt
+    - trivy image $REGISTRY_USERNAME/worker:latest > trivy_worker.txt
+    - trivy image $REGISTRY_USERNAME/seed-data:latest > trivy_seed.txt
+  artifacts:
+    paths:
+      - trivy_vote.txt
+      - trivy_result.txt
+      - trivy_worker.txt
+      - trivy_seed.txt
+
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBECONFIG" > kubeconfig
+    - export KUBECONFIG=$(pwd)/kubeconfig
+    - kubectl config view
+  script:
+    - echo "Deploying to Kubernetes cluster..."
+
+    # Deploy all manifests
+    - kubectl apply -f vote-deployment.yaml --validate=false
+    - kubectl apply -f results-deployment.yaml --validate=false
+    - kubectl apply -f worker-deployment.yaml --validate=false
+    - kubectl apply -f seed-data-deployment.yaml --validate=false
+    - kubectl apply -f vote-svc.yaml --validate=false
+    - kubectl apply -f results-svc.yaml --validate=false
+
+    # Check status
+    - kubectl rollout status deployment/vote
+    - kubectl rollout status deployment/results
+    - kubectl rollout status deployment/worker
+    - kubectl get pods -o wide
+    - kubectl get svc
+    - echo "Deployment Successful!"
