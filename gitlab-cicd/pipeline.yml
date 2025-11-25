@@ -4,12 +4,9 @@ stages:
   - trivy_image_scan
   - deploy
 
-# Use your DockerHub or GitLab registry credentials
 variables:
   REGISTRY_USERNAME: "$REGISTRY_USERNAME"
   REGISTRY_PASSWORD: "$REGISTRY_PASSWORD"
-  REGISTRY_URL: "docker.io"  # Change if you are using GitLab registry instead
-  DOCKER_DRIVER: overlay2
 
 checkout:
   stage: checkout
@@ -80,3 +77,4 @@ deploy:
     - kubectl get pods -o wide
     - kubectl get svc
     - echo "Deployment Successful!"
+
